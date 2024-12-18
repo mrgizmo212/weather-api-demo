@@ -24,16 +24,15 @@ export class WeatherServer {
   constructor() {
     this.weatherService = new WeatherService(config.openWeatherApiKey);
     this.authManager = new AuthManager(config.secretKey);
-    // Serve static files from public directory
-    this.app.use(express.static('public'));
     
     this.setupRoutes();
     this.setupWebSocket();
-  }
 
-  private setupRoutes() {
-    // Root endpoint to verify API is running
-    this.app.get('/', (req: Request, res: Response) => {
+    // Serve static files from public directory (must be after routes)
+    this.app.use(express.static('public'));
+    
+    // Fallback route for API info
+    this.app.get('/api', (req: Request, res: Response) => {
       res.json({
         status: 'ok',
         message: 'Weather API is running',
@@ -43,7 +42,9 @@ export class WeatherServer {
         }
       });
     });
+  }
 
+  private setupRoutes() {
     // Route to register clients and get API keys
     this.app.post('/register', express.json(), (req: Request, res: Response) => {
       const { clientId } = req.body;
