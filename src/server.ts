@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
 import { createServer } from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
 import { WeatherService } from './services/WeatherService.js';
 import { AuthManager } from './auth/AuthManager.js';
 import { config } from './config.js';
@@ -17,17 +16,17 @@ interface Message {
 export class WeatherServer {
   private app = express();
   private server = createServer(this.app);
-  private wss = new WebSocketServer({ server: this.server });
   private weatherService: WeatherService;
   private authManager: AuthManager;
+  private clients = new Map<string, Response>();
 
   constructor() {
     this.weatherService = new WeatherService(config.openWeatherApiKey);
     this.authManager = new AuthManager(config.secretKey);
-    
     this.setupRoutes();
-    this.setupWebSocket();
-    
+  }
+
+  private setupRoutes() {
     // API info route
     this.app.get('/', (req: Request, res: Response) => {
       res.json({
@@ -35,14 +34,12 @@ export class WeatherServer {
         message: 'Weather API is running',
         endpoints: {
           register: 'POST /register',
-          websocket: `ws://${req.get('host')}`
+          weather: '/weather?token=YOUR_API_KEY'
         }
       });
     });
-  }
 
-  private setupRoutes() {
-    // Route to register clients and get API keys
+    // Register route
     this.app.post('/register', express.json(), (req: Request, res: Response) => {
       const { clientId } = req.body;
       if (!clientId) {
@@ -52,73 +49,83 @@ export class WeatherServer {
       const apiKey = this.authManager.generateApiKey(clientId);
       res.json({ apiKey });
     });
-  }
 
-  private setupWebSocket() {
-    this.wss.on('connection', (ws: WebSocket, req) => {
-      // Get token from query parameter
-      const url = new URL(req.url || '', `http://${req.headers.host}`);
-      const token = url.searchParams.get('token');
+    // Weather SSE endpoint
+    this.app.get('/weather', (req: Request, res: Response) => {
+      const token = req.query.token as string;
       if (!token) {
-        ws.close(1008, 'Missing authentication token');
-        return;
+        return res.status(401).json({ error: 'Missing authentication token' });
       }
 
-      const apiKey = token;
-      const clientId = this.authManager.validateApiKey(apiKey);
+      const clientId = this.authManager.validateApiKey(token);
       if (!clientId) {
-        ws.close(1008, 'Invalid API key');
-        return;
+        return res.status(401).json({ error: 'Invalid API key' });
       }
+
+      // Set SSE headers
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+
+      // Store client connection
+      this.clients.set(clientId, res);
+
+      // Handle client disconnect
+      req.on('close', () => {
+        this.clients.delete(clientId);
+        console.log(`Client disconnected: ${clientId}`);
+      });
 
       console.log(`Client connected: ${clientId}`);
 
-      ws.on('message', async (data: Buffer | ArrayBuffer | Buffer[]) => {
-        try {
-          const message = JSON.parse(data.toString()) as Message;
-          const response = await this.handleMessage(message);
-          ws.send(JSON.stringify({
-            id: message.id,
-            ...response
-          }));
-        } catch (error) {
-          ws.send(JSON.stringify({
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }));
-        }
-      });
+      // Send initial connection success message
+      this.sendEvent(res, 'connected', { message: 'Connected successfully' });
+    });
 
-      ws.on('close', () => {
-        console.log(`Client disconnected: ${clientId}`);
-      });
+    // Weather request endpoint
+    this.app.post('/weather/:city', express.json(), async (req: Request, res: Response) => {
+      const token = req.query.token as string;
+      if (!token) {
+        return res.status(401).json({ error: 'Missing authentication token' });
+      }
+
+      const clientId = this.authManager.validateApiKey(token);
+      if (!clientId) {
+        return res.status(401).json({ error: 'Invalid API key' });
+      }
+
+      const city = req.params.city;
+      try {
+        const weather = await this.weatherService.getWeather(city);
+        const clientRes = this.clients.get(clientId);
+        if (clientRes) {
+          this.sendEvent(clientRes, 'weather', {
+            id: Date.now().toString(),
+            result: weather
+          });
+          res.json({ status: 'ok', message: 'Weather request processed' });
+        } else {
+          res.status(400).json({ error: 'Client not connected to SSE endpoint' });
+        }
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Weather service error'
+        });
+      }
     });
   }
 
-  private async handleMessage(message: Message) {
-    if (message.type !== 'CallTool') {
-      throw new Error(`Unknown message type: ${message.type}`);
-    }
-
-    if (message.params.name === 'get_weather') {
-      try {
-        const { city } = message.params.arguments;
-        const weather = await this.weatherService.getWeather(city);
-        return {
-          result: weather
-        };
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : 'Weather service error');
-      }
-    }
-
-    throw new Error(`Unknown tool: ${message.params.name}`);
+  private sendEvent(res: Response, event: string, data: any) {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
   }
 
   async start(port: number = config.port) {
     return new Promise<void>((resolve) => {
       this.server.listen(port, '0.0.0.0', () => {
         console.log(`Server running on port ${port}`);
-        console.log(`WebSocket server running on ws://localhost:${port}`);
+        console.log(`SSE endpoint available at http://localhost:${port}/weather`);
         console.log('To register a client, send a POST request to /register with {"clientId": "your-client-id"}');
         resolve();
       });
@@ -126,6 +133,12 @@ export class WeatherServer {
   }
 
   async stop() {
+    // Close all client connections
+    for (const res of this.clients.values()) {
+      res.end();
+    }
+    this.clients.clear();
+
     return new Promise<void>((resolve, reject) => {
       this.server.close((err) => {
         if (err) reject(err);
