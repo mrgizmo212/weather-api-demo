@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: weather-api-demo
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: SECRET_KEY
+        sync: false
+      - key: OPEN_WEATHER_API_KEY
+        sync: false
