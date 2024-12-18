@@ -26,6 +26,9 @@ export class WeatherServer {
     this.authManager = new AuthManager(config.secretKey);
     this.setupRoutes();
     this.setupWebSocket();
+    
+    // Serve static files from test directory
+    this.app.use('/demo', express.static('test'));
   }
 
   private setupRoutes() {
