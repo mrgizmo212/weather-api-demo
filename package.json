@@ -5,8 +5,7 @@
   "main": "build/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc && npm run copy-public",
-    "copy-public": "cp -r public build/",
+    "build": "tsc",
     "start": "node build/index.js",
     "dev": "ts-node-esm src/index.ts",
     "test": "ts-node-esm test/test-client.ts"

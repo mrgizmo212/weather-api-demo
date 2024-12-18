@@ -25,14 +25,11 @@ export class WeatherServer {
     this.weatherService = new WeatherService(config.openWeatherApiKey);
     this.authManager = new AuthManager(config.secretKey);
     
-    // Serve static files from public directory first
-    this.app.use(express.static('build/public'));
-    
     this.setupRoutes();
     this.setupWebSocket();
     
-    // Fallback route for API info
-    this.app.get('/api', (req: Request, res: Response) => {
+    // API info route
+    this.app.get('/', (req: Request, res: Response) => {
       res.json({
         status: 'ok',
         message: 'Weather API is running',
