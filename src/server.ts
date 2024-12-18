@@ -55,14 +55,15 @@ export class WeatherServer {
 
   private setupWebSocket() {
     this.wss.on('connection', (ws: WebSocket, req) => {
-      // Authenticate the connection
-      const authHeader = req.headers['authorization'];
-      if (!authHeader?.startsWith('Bearer ')) {
-        ws.close(1008, 'Invalid authentication');
+      // Get token from query parameter
+      const url = new URL(req.url || '', `http://${req.headers.host}`);
+      const token = url.searchParams.get('token');
+      if (!token) {
+        ws.close(1008, 'Missing authentication token');
         return;
       }
 
-      const apiKey = authHeader.substring(7);
+      const apiKey = token;
       const clientId = this.authManager.validateApiKey(apiKey);
       if (!clientId) {
         ws.close(1008, 'Invalid API key');
@@ -114,7 +115,7 @@ export class WeatherServer {
 
   async start(port: number = config.port) {
     return new Promise<void>((resolve) => {
-      this.server.listen(port, () => {
+      this.server.listen(port, '0.0.0.0', () => {
         console.log(`Server running on port ${port}`);
         console.log(`WebSocket server running on ws://localhost:${port}`);
         console.log('To register a client, send a POST request to /register with {"clientId": "your-client-id"}');
