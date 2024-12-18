@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather API Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            background: #fff;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 200px;
+        }
+        #output {
+            white-space: pre-wrap;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #e9ecef;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            color: #0056b3;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Weather API Demo</h1>
+    <p>This demo shows how to use the Weather API WebSocket service to get real-time weather data.</p>
+
+    <div class="container">
+        <h2>1. Register Client</h2>
+        <p>First, register to get an API key:</p>
+        <input type="text" id="clientId" placeholder="Enter client ID" value="demo-user">
+        <button onclick="register()">Register</button>
+        <div id="registerOutput" class="status"></div>
+    </div>
+
+    <div class="container">
+        <h2>2. Connect WebSocket</h2>
+        <p>Connect to the WebSocket server using your API key:</p>
+        <button onclick="connectWebSocket()" id="connectBtn">Connect</button>
+        <button onclick="disconnectWebSocket()" id="disconnectBtn" disabled>Disconnect</button>
+        <div id="wsStatus" class="status"></div>
+    </div>
+
+    <div class="container">
+        <h2>3. Get Weather</h2>
+        <p>Get weather information for any city:</p>
+        <input type="text" id="city" placeholder="Enter city name" value="London">
+        <button onclick="getWeather()">Get Weather</button>
+    </div>
+
+    <div class="container">
+        <h2>Output Log</h2>
+        <div id="output"></div>
+    </div>
+
+    <script>
+        let ws;
+        let apiKey;
+
+        function log(message) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.textContent = `[${timestamp}] ${message}\n` + output.textContent;
+            output.scrollTop = 0;
+        }
+
+        async function register() {
+            const clientId = document.getElementById('clientId').value;
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ clientId })
+                });
+                const data = await response.json();
+                apiKey = data.apiKey;
+                log(`Registered successfully!`);
+                document.getElementById('registerOutput').textContent = `API Key: ${apiKey}`;
+            } catch (error) {
+                log(`Registration error: ${error.message}`);
+            }
+        }
+
+        function connectWebSocket() {
+            if (!apiKey) {
+                log('Please register first to get an API key');
+                return;
+            }
+
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}?token=${apiKey}`;
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                log('WebSocket connected!');
+                document.getElementById('wsStatus').textContent = 'Connected';
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    log(`Received weather data: ${JSON.stringify(data, null, 2)}`);
+                } catch (error) {
+                    log(`Received: ${event.data}`);
+                }
+            };
+
+            ws.onerror = (error) => {
+                log(`WebSocket error: ${error.message}`);
+                document.getElementById('wsStatus').textContent = 'Error';
+            };
+
+            ws.onclose = () => {
+                log('WebSocket disconnected');
+                document.getElementById('wsStatus').textContent = 'Disconnected';
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        function getWeather() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Please connect WebSocket first');
+                return;
+            }
+
+            const city = document.getElementById('city').value;
+            const message = {
+                id: Date.now().toString(),
+                type: 'CallTool',
+                params: {
+                    name: 'get_weather',
+                    arguments: {
+                        city: city
+                    }
+                }
+            };
+
+            ws.send(JSON.stringify(message));
+            log(`Requesting weather for ${city}...`);
+        }
+    </script>
+</body>
+</html>

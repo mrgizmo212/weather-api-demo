@@ -24,11 +24,11 @@ export class WeatherServer {
   constructor() {
     this.weatherService = new WeatherService(config.openWeatherApiKey);
     this.authManager = new AuthManager(config.secretKey);
+    // Serve static files from public directory
+    this.app.use(express.static('public'));
+    
     this.setupRoutes();
     this.setupWebSocket();
-    
-    // Serve static files from test directory
-    this.app.use('/demo', express.static('test'));
   }
 
   private setupRoutes() {
