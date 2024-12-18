@@ -29,6 +29,18 @@ export class WeatherServer {
   }
 
   private setupRoutes() {
+    // Root endpoint to verify API is running
+    this.app.get('/', (req: Request, res: Response) => {
+      res.json({
+        status: 'ok',
+        message: 'Weather API is running',
+        endpoints: {
+          register: 'POST /register',
+          websocket: `ws://${req.get('host')}`
+        }
+      });
+    });
+
     // Route to register clients and get API keys
     this.app.post('/register', express.json(), (req: Request, res: Response) => {
       const { clientId } = req.body;
