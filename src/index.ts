@@ -114,39 +114,40 @@ Use protocol errors for infrastructure issues, content errors for business logic
 
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  // Verify the requested tool exists
-  if (request.params.name !== "get_weather") {
-    throw new Error(`Unknown tool: ${request.params.name}`);
+  const { name, arguments: _args } = request.params;
+  /** Note: every tool must be handled within this request handler */
+  if (name === "get_weather") {
+    // Validate tool arguments using Zod
+    const args = z.object({
+      city: z.string()
+    }).parse(_args);
+
+    try {
+      // Execute the tool logic
+      const weather = await weatherService.getWeather(args.city);
+      
+      // Return success response, note the use of CallToolResultSchema.parse()
+      // to ensure the response matches the expected schema
+      return CallToolResultSchema.parse({
+        content: [{
+          type: "text",
+          text: JSON.stringify(weather, null, 2)
+        }]
+      });
+    } catch (error) {
+      // Return error response
+      // Note: We return errors as content so the client can handle them
+      return CallToolResultSchema.parse({
+        content: [{
+          type: "text",
+          text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+        }],
+        isError: true
+      });
+    }
   }
 
-  // Validate tool arguments using Zod
-  const args = z.object({
-    city: z.string()
-  }).parse(request.params.arguments);
-
-  try {
-    // Execute the tool logic
-    const weather = await weatherService.getWeather(args.city);
-    
-    // Return success response, note the use of CallToolResultSchema.parse()
-    // to ensure the response matches the expected schema
-    return CallToolResultSchema.parse({
-      content: [{
-        type: "text",
-        text: JSON.stringify(weather, null, 2)
-      }]
-    });
-  } catch (error) {
-    // Return error response
-    // Note: We return errors as content so the client can handle them
-    return CallToolResultSchema.parse({
-      content: [{
-        type: "text",
-        text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }],
-      isError: true
-    });
-  }
+  throw new Error(`Tool ${name} not found`);
 });
 
 /**
