@@ -118,7 +118,20 @@ export class WeatherServer {
       if (!this.transport) {
         return res.status(400).json({ error: 'No SSE connection established' });
       }
-      await this.transport.handlePostMessage(req, res);
+      const message = req.body;
+      if (!message || typeof message !== 'object') {
+        return res.status(400).json({ error: 'Invalid message format' });
+      }
+
+      try {
+        const result = await this.mcpServer.handleMessage(message);
+        await this.transport.handlePostMessage(req, res);
+      } catch (error) {
+        console.error('Error handling message:', error);
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
     });
   }
 

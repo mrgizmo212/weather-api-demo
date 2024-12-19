@@ -15,22 +15,32 @@ export class Server {
     this.transport = transport;
     this.transport.onMessage(async (data) => {
       try {
-        const request = data as Request;
-        const handler = this.requestHandlers.get(request.type);
-        if (!handler) {
-          throw new Error(`Unknown request type: ${request.type}`);
-        }
-        const result = await handler(request);
-        await this.transport?.send({
-          id: request.id,
-          ...result,
-        });
+        const result = await this.handleMessage(data);
+        await this.transport?.send(result);
       } catch (error) {
         await this.transport?.send({
           error: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
+  }
+
+  async handleMessage(data: any): Promise<any> {
+    const request = data as Request;
+    if (!request || !request.type) {
+      throw new Error('Invalid request format');
+    }
+
+    const handler = this.requestHandlers.get(request.type);
+    if (!handler) {
+      throw new Error(`Unknown request type: ${request.type}`);
+    }
+
+    const result = await handler(request);
+    return {
+      id: request.id,
+      ...result,
+    };
   }
 
   setRequestHandler(type: string, handler: (request: Request) => Promise<any>): void {
