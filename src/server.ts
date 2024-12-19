@@ -19,7 +19,22 @@ export class WeatherServer {
       },
       {
         capabilities: {
-          tools: {},
+          tools: {
+            get_weather: {
+              name: 'get_weather',
+              description: 'Get current weather for a city',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  city: {
+                    type: 'string',
+                    description: 'City name',
+                  },
+                },
+                required: ['city'],
+              },
+            },
+          },
         },
       }
     );
