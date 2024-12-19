@@ -1,14 +1,17 @@
 import { Response } from 'express';
 import { Transport } from './types.js';
+import { randomUUID } from 'crypto';
 
 export class SSEServerTransport implements Transport {
   private messageEndpoint: string;
   private res: Response;
-  private messageHandler?: (data: any) => Promise<void>;
+  private messageHandler?: (data: any) => Promise<any>;
+  readonly sessionId: string;
 
   constructor(messageEndpoint: string, res: Response) {
     this.messageEndpoint = messageEndpoint;
     this.res = res;
+    this.sessionId = randomUUID();
   }
 
   async send(data: any): Promise<void> {
@@ -39,5 +42,10 @@ export class SSEServerTransport implements Transport {
 
   async close(): Promise<void> {
     this.res.end();
+    if (this.onclose) {
+      this.onclose();
+    }
   }
+
+  onclose?: () => void;
 }
