@@ -124,7 +124,6 @@ export class WeatherServer {
       }
 
       try {
-        const result = await this.mcpServer.handleMessage(message);
         await this.transport.handlePostMessage(req, res);
       } catch (error) {
         console.error('Error handling message:', error);

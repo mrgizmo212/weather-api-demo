@@ -27,12 +27,13 @@ export class SSEServerTransport implements Transport {
     }
 
     try {
-      await this.messageHandler(req.body);
+      const result = await this.messageHandler(req.body);
+      await this.send(result);
       res.json({ status: 'ok' });
     } catch (error) {
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await this.send({ error: errorMessage });
+      res.status(500).json({ error: errorMessage });
     }
   }
 
