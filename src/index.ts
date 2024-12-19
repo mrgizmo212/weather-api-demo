@@ -45,7 +45,7 @@ const server = new Server(
   },
   {
     capabilities: {
-      tools: {},              // Advertise that we support tools
+      tools: {},              // REQUIRED: Advertise that we support tools
       resources: {},          // Required for some clients
     },
   }
