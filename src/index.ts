@@ -1,115 +1,104 @@
-import express from 'express';
-import { Server } from './mcp/server.js';
-import { SSEServerTransport } from './mcp/sse.js';
+// src/server.ts
+import express from "express";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { WeatherService } from './services/WeatherService.js';
 import { config } from './config.js';
+import {
+  Tool,
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
+// Create Express app
 const app = express();
+
+// Initialize services
 const weatherService = new WeatherService(config.openWeatherApiKey);
 
-// Track active sessions
-const sessions = new Map<string, SSEServerTransport>();
-
-// Create MCP server
+// Initialize MCP server and transport
 const server = new Server(
   {
-    name: 'weather-server',
-    version: '1.0.0',
+    name: "weather-server",
+    version: "1.0.0",
   },
   {
     capabilities: {
       tools: {},
+      resources: {},
     },
   }
 );
 
-// Set up tool handlers
-server.setRequestHandler('ListToolsRequest', async () => ({
-  tools: [
-    {
-      name: 'get_weather',
-      description: 'Get current weather for a city',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          city: {
-            type: 'string',
-            description: 'City name',
-          },
-        },
-        required: ['city'],
-      },
-    },
-  ],
-}));
+let transport: SSEServerTransport;
 
-server.setRequestHandler('CallToolRequest', async (request) => {
-  if (request.params.name !== 'get_weather') {
+const tools: Tool[] = [{
+  name: "get_weather",
+  description: "Get current weather for a city",
+  inputSchema: {
+    type: "object",
+    properties: {
+      city: {
+        type: "string",
+        description: "City name"
+      }
+    },
+    required: ["city"]
+  }
+}];
+
+// Set up handlers
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  if (request.params.name !== "get_weather") {
     throw new Error(`Unknown tool: ${request.params.name}`);
   }
 
-  const { city } = request.params.arguments;
+  const args = z.object({
+    city: z.string()
+  }).parse(request.params.arguments);
+
   try {
-    const weather = await weatherService.getWeather(city);
+    const weather = await weatherService.getWeather(args.city);
     return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(weather, null, 2),
-        },
-      ],
+      content: [{
+        type: "text",
+        text: JSON.stringify(weather, null, 2)
+      }]
     };
-  } catch (error: unknown) {
-    throw new Error(error instanceof Error ? error.message : 'Weather service error');
+  } catch (error) {
+    return {
+      content: [{
+        type: "text",
+        text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      }],
+      isError: true
+    };
   }
 });
 
-// Set up routes
-app.get('/', (_req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'Weather API is running',
-    endpoints: {
-      sse: '/weather',
-      message: '/message'
-    }
-  });
-});
-
-// SSE endpoint
-app.get('/weather', async (_req, res) => {
-  console.log('Client connected');
-  const transport = new SSEServerTransport('/message', res);
-  
-  // Store transport in sessions map
-  sessions.set(transport.sessionId, transport);
-  
-  // Clean up on close
-  transport.onclose = () => {
-    sessions.delete(transport.sessionId);
-  };
-
+// Set up Express routes
+app.get("/sse", async (_req, res) => {
+  console.log("New SSE connection received");
+  transport = new SSEServerTransport("/message", res);
   await server.connect(transport);
+
+  server.onclose = async () => {
+    console.log("Server connection closed");
+    await server.close();
+  };
 });
 
-// Message endpoint
-app.post('/message', async (req, res) => {
-  const sessionId = req.query.sessionId as string;
-  const transport = sessions.get(sessionId);
-  
-  if (!transport) {
-    res.status(404).json({ error: 'Session not found' });
-    return;
-  }
-
+app.post("/message", async (req, res) => {
+  console.log("Received message");
   await transport.handlePostMessage(req, res);
 });
 
 // Start server
-const portStr = process.env.PORT || config.port.toString();
-const port = parseInt(portStr, 10);
-
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Server running on port ${port}`);
-  console.log(`SSE endpoint available at http://localhost:${port}/weather`);
+const port = config.port;
+app.listen(port, () => {
+  console.log(`MCP Weather Server running on port ${port}`);
+  console.log(`SSE endpoint: http://localhost:${port}/sse`);
 });
