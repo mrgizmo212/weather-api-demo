@@ -1,5 +1,5 @@
 import { Server } from './server.js';
-import { Transport } from './transport.js';
-import { Request, Response } from './types.js';
+import { SSEServerTransport } from './sse.js';
+import { Request, Response, Transport } from './types.js';
 
-export { Server, Transport, Request, Response };
+export { Server, SSEServerTransport, Request, Response, Transport };
