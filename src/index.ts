@@ -17,8 +17,9 @@ import { WeatherService } from './services/WeatherService.js';
 import { config } from './config.js';
 import {
   Tool,                    // Type definition for MCP tools
-  CallToolRequestSchema,   // Schema for tool execution requests
   ListToolsRequestSchema,  // Schema for tool listing requests
+  CallToolRequestSchema,   // Schema for tool execution requests
+  CallToolResultSchema     // Schema for tool execution responses
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";   // Runtime type checking library
 
@@ -127,23 +128,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Execute the tool logic
     const weather = await weatherService.getWeather(args.city);
     
-    // Return success response
-    return {
+    // Return success response, note the use of CallToolResultSchema.parse()
+    // to ensure the response matches the expected schema
+    return CallToolResultSchema.parse({
       content: [{
         type: "text",
         text: JSON.stringify(weather, null, 2)
       }]
-    };
+    });
   } catch (error) {
     // Return error response
     // Note: We return errors as content so the client can handle them
-    return {
+    return CallToolResultSchema.parse({
       content: [{
         type: "text",
         text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
       }],
       isError: true
-    };
+    });
   }
 });
 
